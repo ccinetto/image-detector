@@ -1,0 +1,17 @@
+{
+  "name": "image-detector",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "backend:dev": "cd backend && npm run dev",
+    "backend:build": "cd backend && npm run build",
+    "backend:deploy": "cd backend && npm run deploy",
+    "backend:remove": "cd backend && npm run remove",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
+    "frontend:deploy": "cd frontend && npm run deploy",
+    "frontend:remove": "cd frontend && npm run remove",
+    "deploy:all": "npm run backend:deploy && npm run frontend:deploy",
+    "remove:all": "npm run frontend:remove && npm run backend:remove"
+  }
+}
