@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Table, Button, Typography } from 'antd';
 import { TrophyOutlined, HomeOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { useGameEvents } from '../hooks/useGameEvents';
 
 const { Title, Text } = Typography;
 const API_URL = import.meta.env.VITE_API_URL;
@@ -15,11 +16,17 @@ const Leaderboard: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [restarting, setRestarting] = useState(false);
 
+  const handleGameEvent = useCallback((event: string, data: any) => {
+    if (event === 'game:restarted' && data.sessionId === sessionId) {
+      navigate(`/game/waiting/${sessionId}`);
+    }
+  }, [navigate, sessionId]);
+
+  useGameEvents(sessionId, handleGameEvent);
+
   useEffect(() => {
     loadLeaderboard();
     loadSession();
-    const interval = setInterval(loadSession, 2000);
-    return () => clearInterval(interval);
   }, [sessionId]);
 
   const loadLeaderboard = async () => {
@@ -38,10 +45,6 @@ const Leaderboard: React.FC = () => {
       const response = await axios.get(`${API_URL}/game/session/${sessionId}`);
       const sessionData = response.data.find((item: any) => item.userId === 'session');
       setSession(sessionData);
-
-      if (sessionData?.status === 'waiting') {
-        navigate(`/game/waiting/${sessionId}`);
-      }
     } catch (error) {
       console.error('Failed to load session');
     }

@@ -61,4 +61,14 @@ export class GameController {
   ) {
     return this.gameService.getRoundQuestion(sessionId, parseInt(round));
   }
+
+  @Post('session/:sessionId/next-round')
+  nextRound(@Param('sessionId') sessionId: string, @Body() body: { userId: string }) {
+    return this.gameService.nextRound(sessionId, body.userId);
+  }
+
+  @Post('session/:sessionId/end')
+  endGame(@Param('sessionId') sessionId: string, @Body() body: { userId: string }) {
+    return this.gameService.endGame(sessionId, body.userId);
+  }
 }

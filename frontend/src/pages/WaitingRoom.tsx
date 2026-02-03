@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { Card, Button, Space, Typography, message, Spin } from 'antd';
-import { CopyOutlined, ReloadOutlined } from '@ant-design/icons';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Card, Button, Space, Typography, message } from 'antd';
+import { CopyOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { useGameEvents } from '../hooks/useGameEvents';
 
 const { Title, Text } = Typography;
 const API_URL = import.meta.env.VITE_API_URL;
@@ -14,10 +15,18 @@ const WaitingRoom: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [session, setSession] = useState<any>(null);
 
+  const handleGameEvent = useCallback((event: string, data: any) => {
+    if (event === 'game:started') {
+      navigate(`/game/play/${sessionId}`);
+    } else if (event === 'player:joined' && data.sessionId === sessionId) {
+      setPlayers(data.players);
+    }
+  }, [navigate, sessionId]);
+
+  useGameEvents(sessionId, handleGameEvent);
+
   useEffect(() => {
     loadSession();
-    const interval = setInterval(loadSession, 2000);
-    return () => clearInterval(interval);
   }, [sessionId]);
 
   const loadSession = async () => {
@@ -28,19 +37,9 @@ const WaitingRoom: React.FC = () => {
       
       setSession(sessionData);
       setPlayers(playerList);
-
-      if (sessionData?.status === 'playing') {
-        navigate(`/game/play/${sessionId}`);
-      }
     } catch (error) {
       console.error('Failed to load session');
     }
-  };
-
-  const handleRefresh = async () => {
-    setLoading(true);
-    await loadSession();
-    setLoading(false);
   };
 
   const copyCode = () => {
@@ -58,7 +57,6 @@ const WaitingRoom: React.FC = () => {
     setLoading(true);
     try {
       await axios.post(`${API_URL}/game/session/${sessionId}/start`, {});
-      navigate(`/game/play/${sessionId}`);
     } catch (error) {
       message.error('Failed to start game');
     } finally {
@@ -74,7 +72,6 @@ const WaitingRoom: React.FC = () => {
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div>
             <Title level={2}>Waiting Room</Title>
-            <Text type="secondary">Auto-refreshing every 2 seconds</Text>
           </div>
           
           <div>
@@ -88,18 +85,10 @@ const WaitingRoom: React.FC = () => {
           </div>
 
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <Title level={4} style={{ margin: 0 }}>Players ({players.length})</Title>
-              <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading}>
-                Refresh Now
-              </Button>
-            </div>
+            <Title level={4} style={{ margin: 0, marginBottom: 16 }}>Players ({players.length})</Title>
             {players.length === 0 ? (
               <div style={{ padding: 40 }}>
-                <Spin size="large" />
-                <div style={{ marginTop: 16 }}>
-                  <Text type="secondary">Waiting for players to join...</Text>
-                </div>
+                <Text type="secondary">Waiting for players to join...</Text>
               </div>
             ) : (
               <Space direction="vertical" style={{ width: '100%' }}>

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand, GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { IotService } from '../iot/iot.service';
 
 @Injectable()
 export class GameService {
@@ -9,7 +10,10 @@ export class GameService {
   private gameSessionsTable: string;
   private questionsTable: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private iotService: IotService,
+  ) {
     const client = new DynamoDBClient({});
     this.dynamodb = DynamoDBDocumentClient.from(client);
     this.gameSessionsTable = this.configService.get<string>('GAMES_TABLE');
@@ -83,6 +87,24 @@ export class GameService {
         ':empty': [],
       },
     }));
+
+    // Get all players and publish event
+    const result = await this.dynamodb.send(new QueryCommand({
+      TableName: this.gameSessionsTable,
+      KeyConditionExpression: 'sessionId = :sessionId',
+      ExpressionAttributeValues: {
+        ':sessionId': sessionId,
+      },
+    }));
+
+    const allPlayers = (result.Items || [])
+      .filter(item => item.userId !== 'session')
+      .map(p => ({ userId: p.userId, username: p.username }));
+
+    await this.iotService.publishGameEvent(sessionId, 'player:joined', {
+      sessionId,
+      players: allPlayers,
+    });
 
     return { message: 'Joined session successfully', player };
   }
@@ -196,6 +218,8 @@ export class GameService {
       },
     }));
 
+    await this.iotService.publishGameEvent(sessionId, 'game:started', { sessionId });
+
     return { message: 'Game started' };
   }
 
@@ -243,6 +267,8 @@ export class GameService {
       }));
     }
 
+    await this.iotService.publishGameEvent(sessionId, 'game:restarted', { sessionId });
+
     return { message: 'Game restarted' };
   }
 
@@ -278,6 +304,74 @@ export class GameService {
     }
 
     return await this.getQuestion(questionId);
+  }
+
+  async nextRound(sessionId: string, userId: string) {
+    const session = await this.dynamodb.send(new GetCommand({
+      TableName: this.gameSessionsTable,
+      Key: { sessionId, userId: 'session' },
+    }));
+
+    if (session.Item?.creatorId !== userId) {
+      throw new Error('Only the host can advance to the next round');
+    }
+
+    const currentRound = session.Item?.currentRound || 0;
+    const nextRound = currentRound + 1;
+    const totalRounds = session.Item?.totalRounds || 5;
+
+    if (nextRound > totalRounds) {
+      await this.iotService.publishGameEvent(sessionId, 'game:ended', { sessionId });
+      return { finished: true, message: 'Game completed' };
+    }
+
+    await this.dynamodb.send(new UpdateCommand({
+      TableName: this.gameSessionsTable,
+      Key: { sessionId, userId: 'session' },
+      UpdateExpression: 'SET currentRound = :round',
+      ExpressionAttributeValues: {
+        ':round': nextRound,
+      },
+    }));
+
+    const question = await this.getRoundQuestion(sessionId, nextRound);
+
+    await this.iotService.publishGameEvent(sessionId, 'game:next-round', {
+      round: nextRound,
+      totalRounds,
+      question: {
+        id: question.id,
+        question: question.question,
+        questionImageUrl: question.questionImageUrl,
+      },
+    });
+
+    return { round: nextRound, totalRounds, question };
+  }
+
+  async endGame(sessionId: string, userId: string) {
+    const session = await this.dynamodb.send(new GetCommand({
+      TableName: this.gameSessionsTable,
+      Key: { sessionId, userId: 'session' },
+    }));
+
+    if (session.Item?.creatorId !== userId) {
+      throw new Error('Only the host can end the game');
+    }
+
+    await this.dynamodb.send(new UpdateCommand({
+      TableName: this.gameSessionsTable,
+      Key: { sessionId, userId: 'session' },
+      UpdateExpression: 'SET #status = :status',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':status': 'finished',
+      },
+    }));
+
+    await this.iotService.publishGameEvent(sessionId, 'game:ended', { sessionId });
+
+    return { message: 'Game ended' };
   }
 
   private async getQuestion(questionId: string) {

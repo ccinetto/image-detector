@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { GameModule } from './game/game.module';
 import { QuestionsModule } from './questions/questions.module';
+import { IotModule } from './iot/iot.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { QuestionsModule } from './questions/questions.module';
     AuthModule,
     GameModule,
     QuestionsModule,
+    IotModule,
   ],
   controllers: [AppController],
   providers: [AppService],

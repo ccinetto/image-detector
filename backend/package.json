@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.490.0",
+    "@aws-sdk/client-iot-data-plane": "^3.490.0",
     "@aws-sdk/client-s3": "^3.490.0",
     "@aws-sdk/lib-dynamodb": "^3.490.0",
     "@nestjs/common": "^10.3.0",

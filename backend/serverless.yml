@@ -39,6 +39,10 @@ provider:
             - s3:DeleteObject
           Resource:
             - !Sub '${ImagesBucket.Arn}/*'
+        - Effect: Allow
+          Action:
+            - iot:Publish
+          Resource: '*'
 
 package:
   patterns:
@@ -66,6 +70,49 @@ functions:
 
 resources:
   Resources:
+    # Cognito Identity Pool for IoT access
+    CognitoIdentityPool:
+      Type: AWS::Cognito::IdentityPool
+      Properties:
+        IdentityPoolName: ${self:service}-${self:provider.stage}
+        AllowUnauthenticatedIdentities: true
+
+    # IAM Role for unauthenticated users
+    CognitoUnAuthRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Federated: cognito-identity.amazonaws.com
+              Action: sts:AssumeRoleWithWebIdentity
+              Condition:
+                StringEquals:
+                  cognito-identity.amazonaws.com:aud: !Ref CognitoIdentityPool
+                ForAnyValue:StringLike:
+                  cognito-identity.amazonaws.com:amr: unauthenticated
+        Policies:
+          - PolicyName: IoTPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - iot:Connect
+                    - iot:Subscribe
+                    - iot:Receive
+                  Resource: '*'
+
+    # Attach role to identity pool
+    IdentityPoolRoleAttachment:
+      Type: AWS::Cognito::IdentityPoolRoleAttachment
+      Properties:
+        IdentityPoolId: !Ref CognitoIdentityPool
+        Roles:
+          unauthenticated: !GetAtt CognitoUnAuthRole.Arn
+
     QuestionsTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -133,3 +180,9 @@ resources:
       Value: !Ref ImagesBucket
       Export:
         Name: ${self:service}-${self:provider.stage}-ImagesBucket
+    IdentityPoolId:
+      Value: !Ref CognitoIdentityPool
+      Export:
+        Name: ${self:service}-${self:provider.stage}-IdentityPoolId
+    IoTEndpoint:
+      Value: !Sub 'https://${AWS::AccountId}.iot.${AWS::Region}.amazonaws.com'
